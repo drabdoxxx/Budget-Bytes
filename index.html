@@ -136,6 +136,13 @@ section{padding:40px 0}
 .referral-result .stats b{display:block;font-size:20px;color:var(--purple-700)}
 .referral-result .stats span{font-size:11.5px;color:var(--muted)}
 .referral-result .copy-btn{margin-top:10px;background:var(--purple-500);color:#fff;border:none;padding:8px 16px;border-radius:100px;font-size:12.5px;font-weight:700;cursor:pointer}
+.invite-list{margin-top:14px;text-align:right;display:flex;flex-direction:column;gap:8px}
+.invite-row{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px}
+.invite-row .i-phone{font-weight:700}
+.invite-row .i-time{color:var(--muted);font-size:11px}
+.invite-row .i-status{font-size:11px;font-weight:700;padding:3px 9px;border-radius:100px;white-space:nowrap}
+.invite-row .i-status.done{background:var(--stock-bg);color:var(--stock)}
+.invite-row .i-status.pending{background:var(--low-bg);color:var(--low-ink)}
 .vf-page .qa-brand{margin:0 auto 16px;width:70px;height:70px;font-size:17px}
 .vf-page h3{margin:0 0 8px;font-size:19px}
 .vf-page p{color:var(--muted);font-size:14px;margin:0}
@@ -396,7 +403,7 @@ const WA_NUMBER = "201555004631";
 
 // رابط Google Apps Script (Web App) لتسجيل الطلبات في جوجل شيت
 // حط اللينك هنا بعد عمل Deploy - لو سايبه فاضي مش هيحصل تسجيل، وبرضه الطلب هيروح لواتساب عادي
-const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbxWq3fh0g3zpOOQd-EGrrIVn2n_g6QtXmDy0iR1nfeXlyDKK_kbAik021CyKPMf6KqRDg/exec";
+const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwoy4QJQCw3DTKTLueFNpNjxKTHwC-oZlotDVWHDV6Q-o5pSshSjZq_wziZvfPsEJ4h_Q/exec";
 
 const ICON_GB = '<svg viewBox="0 0 24 24" fill="none" stroke="#7b3fd6" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20v-4" stroke-linecap="round"/></svg>';
 const ICON_PHONE = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.5 21 3 13.5 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.2 1L6.6 10.8z"/></svg>';
@@ -484,7 +491,17 @@ function showView(name){
   window.scrollTo(0,0);
 }
 
-async function postToSheet(payload){
+// تسجيل في الخلفية من غير انتظار الرد (عشان واتساب يفتح فوراً)
+function fireAndForget(payload){
+  if(!SHEET_WEBHOOK_URL) return;
+  fetch(SHEET_WEBHOOK_URL, {
+    method: 'POST',
+    headers: {'Content-Type': 'text/plain;charset=utf-8'},
+    body: JSON.stringify(payload)
+  }).catch(()=>{});
+}
+// طلب مع انتظار الرد (للحالات اللي محتاجة نتيجة فعلية زي توليد الكود ومتابعة الدعوات)
+async function postAndWait(payload){
   if(!SHEET_WEBHOOK_URL) return null;
   try{
     const res = await fetch(SHEET_WEBHOOK_URL, {
@@ -495,6 +512,17 @@ async function postToSheet(payload){
     return await res.json();
   }catch(err){ return null; }
 }
+
+// كاش محلي بكل أكواد الدعوة الحالية، عشان التحقق من الكود يبقى فوري من غير انتظار السيرفر
+let referralCodes = new Set();
+async function refreshReferralCodesCache(){
+  const result = await postAndWait({action:'getCodes'});
+  if(result && result.status === 'ok'){
+    referralCodes = new Set(result.codes.map(c => String(c).toUpperCase()));
+  }
+}
+refreshReferralCodesCache();
+setInterval(refreshReferralCodesCache, 5*60*1000); // تحديث كل 5 دقايق
 
 let selected = null;
 function openModal(gb,min,price){
@@ -507,30 +535,28 @@ function openModal(gb,min,price){
 }
 function closeModal(){ document.getElementById('modalBg').classList.remove('open'); }
 
-async function sendOrder(e){
+function sendOrder(e){
   e.preventDefault();
   const phone = document.getElementById('phoneInput').value.trim();
   const errorEl = document.getElementById('phoneError');
-  const link = document.getElementById('btnSend');
   if(!/^01[0-9]{9}$/.test(phone)){
     errorEl.style.display = 'block';
     return;
   }
   errorEl.style.display = 'none';
-  const referralCode = document.getElementById('orderReferral').value.trim();
-  const originalText = link.textContent;
-  link.textContent = 'جارٍ التأكيد...';
-  const result = await postToSheet({action:'order', gb:selected.gb, min:selected.min, price:selected.price, phone, referralCode});
-  link.textContent = originalText;
+  const referralCode = document.getElementById('orderReferral').value.trim().toUpperCase();
 
-  let discountLine = '';
-  if(result && result.discountApplied){
-    discountLine = `\nتم تطبيق خصم كود الدعوة (${result.discount} جنيه) — السعر النهائي: ${result.finalPrice} جنيه.`;
+  let discount = 0, finalPrice = selected.price;
+  if(referralCode && referralCodes.has(referralCode)){
+    discount = 15;
+    finalPrice = Math.max(0, selected.price - discount);
   }
+  const discountLine = discount ? `\nتم تطبيق خصم كود الدعوة (${discount} جنيه) — السعر النهائي: ${finalPrice} جنيه.` : '';
   const msg = `السلام عليكم. برجاء تفعيل باقة الـ ${selected.gb} جيجابايت و${selected.min} دقيقة (بـ${selected.price} جنيه) على الرقم: ${phone}.${discountLine}
 أرجو تأكيد التوفر وإتمام العملية. شكراً.`;
   const waLink = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
   closeModal();
+  fireAndForget({action:'order', gb:selected.gb, min:selected.min, price:selected.price, phone, referralCode});
   const win = window.open(waLink, '_blank');
   if(!win){ window.location.href = waLink; }
 }
@@ -582,14 +608,13 @@ function populateReservationForm(){
 }
 populateReservationForm();
 
-document.getElementById('resSubmit').addEventListener('click', async (e)=>{
+document.getElementById('resSubmit').addEventListener('click', (e)=>{
   e.preventDefault();
   const phone = document.getElementById('resPhone').value.trim();
   const pkgVal = document.getElementById('resPackage').value;
   const dateVal = document.getElementById('resDate').value;
-  const referralCode = document.getElementById('resReferral').value.trim();
+  const referralCode = document.getElementById('resReferral').value.trim().toUpperCase();
   const errorEl = document.getElementById('resError');
-  const btn = document.getElementById('resSubmit');
 
   if(!/^01[0-9]{9}$/.test(phone) || !pkgVal || !dateVal){
     errorEl.style.display = 'block';
@@ -601,19 +626,15 @@ document.getElementById('resSubmit').addEventListener('click', async (e)=>{
   const dateLabel = formatArabicDate(new Date(dateVal));
   const packageLabel = `${gb} جيجا / ${min} دقيقة`;
 
-  const originalText = btn.textContent;
-  btn.textContent = 'جارٍ الحجز...';
-  const result = await postToSheet({action:'reservation', phone, packageLabel, activationDate: dateLabel, price, referralCode});
-  btn.textContent = originalText;
-
-  let discountLine = '';
-  let finalPrice = price;
-  if(result && result.discountApplied){
-    finalPrice = result.finalPrice;
-    discountLine = `\nتم تطبيق خصم كود الدعوة (${result.discount} جنيه) — السعر النهائي: ${finalPrice} جنيه.`;
+  let discount = 0, finalPrice = Number(price);
+  if(referralCode && referralCodes.has(referralCode)){
+    discount = 15;
+    finalPrice = Math.max(0, finalPrice - discount);
   }
+  const discountLine = discount ? `\nتم تطبيق خصم كود الدعوة (${discount} جنيه) — السعر النهائي: ${finalPrice} جنيه.` : '';
   const msg = `السلام عليكم. أرغب في حجز مسبق لباقة ${packageLabel} بسعر ${price} جنيه، لتفعيلها يوم ${dateLabel}، على الرقم: ${phone}.${discountLine}
 برجاء تأكيد الحجز. شكراً.`;
+  fireAndForget({action:'reservation', phone, packageLabel, activationDate: dateLabel, price, referralCode});
   const waLink = `https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`;
   const win = window.open(waLink, '_blank');
   if(!win){ window.location.href = waLink; }
@@ -636,7 +657,7 @@ document.getElementById('refGenBtn').addEventListener('click', async ()=>{
 
   const originalText = btn.textContent;
   btn.textContent = 'جارٍ التوليد...';
-  const result = await postToSheet({action:'generateReferralCode', name, phone});
+  const result = await postAndWait({action:'generateReferralCode', name, phone});
   btn.textContent = originalText;
 
   if(!result || result.status !== 'ok'){
@@ -671,7 +692,7 @@ document.getElementById('trackBtn').addEventListener('click', async ()=>{
 
   const originalText = btn.textContent;
   btn.textContent = 'جارٍ البحث...';
-  const result = await postToSheet({action:'trackInvites', phone, code});
+  const result = await postAndWait({action:'trackInvites', phone, code});
   btn.textContent = originalText;
 
   if(!result || result.status !== 'ok'){
@@ -681,11 +702,24 @@ document.getElementById('trackBtn').addEventListener('click', async ()=>{
     return;
   }
   resultEl.style.display = 'block';
+  const listHtml = (result.entries && result.entries.length)
+    ? '<div class="invite-list">' + result.entries.map(en => `
+        <div class="invite-row">
+          <div>
+            <div class="i-phone">${en.phone}</div>
+            <div class="i-time">${en.time} · ${en.type}</div>
+          </div>
+          <span class="i-status ${en.completed ? 'done' : 'pending'}">${en.completed ? 'مكتملة' : 'لسه'}</span>
+        </div>
+      `).join('') + '</div>'
+    : '<p style="font-size:12.5px;color:var(--muted);margin-top:10px">لسه مفيش حد استخدم الكود ده</p>';
+
   resultEl.innerHTML = `
     <div class="stats">
       <div><b>${result.totalInvites}</b><span>إجمالي الدعوات</span></div>
       <div><b>${result.completedInvites}</b><span>دعوات مكتملة</span></div>
     </div>
+    ${listHtml}
   `;
 });
 
