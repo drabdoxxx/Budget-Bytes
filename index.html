@@ -333,7 +333,7 @@ footer b{color:#fff;display:block;font-size:16px;margin-bottom:6px}
       <label class="form-label">موعد التفعيل *</label>
       <select id="resDate" class="form-input"></select>
 
-      <label class="form-label">كود دعوة صديق (اختياري)</label>
+      <label class="form-label">كود الدعوة أو كود الخصم (اختياري)</label>
       <input type="text" id="resReferral" class="form-input" placeholder="مثال: BB123456">
 
       <p id="resError" class="form-error" style="display:none">من فضلك املأ كل الحقول المطلوبة (الرقم لازم يكون 11 رقم يبدأ بـ 01)</p>
@@ -390,7 +390,7 @@ footer b{color:#fff;display:block;font-size:16px;margin-bottom:6px}
     <p>اكتب الرقم اللي عايز تضيف عليه الباقة</p>
     <input type="tel" id="phoneInput" placeholder="01xxxxxxxxx" inputmode="numeric">
     <p id="phoneError" style="display:none;color:#c62828;font-size:12.5px;margin:-8px 0 12px">من فضلك اكتب رقم صحيح مكون من 11 رقم يبدأ بـ 01</p>
-    <input type="text" id="orderReferral" placeholder="كود دعوة صديق (اختياري)" style="margin-top:2px">
+    <input type="text" id="orderReferral" placeholder="كود الدعوة أو كود الخصم (اختياري)" style="margin-top:2px">
     <div class="modal-actions">
       <button class="btn-cancel" id="btnCancel" type="button">إلغاء</button>
       <a class="btn-send" id="btnSend" href="#" rel="noopener">إرسال للواتساب</a>
@@ -403,7 +403,7 @@ const WA_NUMBER = "201555004631";
 
 // رابط Google Apps Script (Web App) لتسجيل الطلبات في جوجل شيت
 // حط اللينك هنا بعد عمل Deploy - لو سايبه فاضي مش هيحصل تسجيل، وبرضه الطلب هيروح لواتساب عادي
-const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzh30jbKNNPnJgdo3K8RlqujPfZ5IvyEIKS_VIkiRoE8a3GriNRZCvFfKJf3GXN-Hy5nA/exec";
+const SHEET_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbyAg0CKdaMOYcp0N7d4Bl_9eY-ufDRrIs2rStQvQ6V1-V3RIZgNnpkTUQtkjCm6w0P_gg/exec";
 
 const ICON_GB = '<svg viewBox="0 0 24 24" fill="none" stroke="#7b3fd6" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-7M22 20v-4" stroke-linecap="round"/></svg>';
 const ICON_PHONE = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C10.5 21 3 13.5 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.2 1L6.6 10.8z"/></svg>';
@@ -513,16 +513,25 @@ async function postAndWait(payload){
   }catch(err){ return null; }
 }
 
-// كاش محلي بكل أكواد الدعوة الحالية، عشان التحقق من الكود يبقى فوري من غير انتظار السيرفر
-let referralCodes = new Set();
+// كاش محلي بقواعد كل الأكواد الحالية (دعوة أو خصم)، عشان التحقق يبقى فوري من غير انتظار السيرفر
+let discountRules = {};
 async function refreshReferralCodesCache(){
   const result = await postAndWait({action:'getCodes'});
   if(result && result.status === 'ok'){
-    referralCodes = new Set(result.codes.map(c => String(c).toUpperCase()));
+    discountRules = result.rules || {};
   }
 }
 refreshReferralCodesCache();
 setInterval(refreshReferralCodesCache, 5*60*1000); // تحديث كل 5 دقايق
+
+function computeDiscount(code, price){
+  const rule = discountRules[code];
+  if(!rule) return 0;
+  if(rule.type === 'flat') return Math.min(rule.amount, price);
+  let d = Math.round(price * rule.pct / 100);
+  if(rule.maxDiscount != null) d = Math.min(d, rule.maxDiscount);
+  return Math.max(0, Math.min(d, price));
+}
 
 let selected = null;
 function openModal(gb,min,price){
@@ -547,8 +556,8 @@ function sendOrder(e){
   const referralCode = document.getElementById('orderReferral').value.trim().toUpperCase();
 
   let discount = 0, finalPrice = selected.price;
-  if(referralCode && referralCodes.has(referralCode)){
-    discount = 15;
+  if(referralCode){
+    discount = computeDiscount(referralCode, selected.price);
     finalPrice = Math.max(0, selected.price - discount);
   }
   const discountLine = discount ? `\nتم تطبيق خصم كود الدعوة (${discount} جنيه) — السعر النهائي: ${finalPrice} جنيه.` : '';
@@ -592,6 +601,11 @@ function nextOccurrence(day){
 function formatArabicDate(d){
   return new Intl.DateTimeFormat('ar-EG', {day:'numeric', month:'long', year:'numeric'}).format(d);
 }
+function formatInviteTime(isoLike){
+  const d = new Date(isoLike);
+  if(isNaN(d)) return isoLike;
+  return new Intl.DateTimeFormat('ar-EG', {day:'numeric', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit'}).format(d);
+}
 function populateReservationForm(){
   const pkgSel = document.getElementById('resPackage');
   pkgSel.innerHTML = '<option value="">اختر الباقة</option>' + packages
@@ -627,8 +641,8 @@ document.getElementById('resSubmit').addEventListener('click', (e)=>{
   const packageLabel = `${gb} جيجا / ${min} دقيقة`;
 
   let discount = 0, finalPrice = Number(price);
-  if(referralCode && referralCodes.has(referralCode)){
-    discount = 15;
+  if(referralCode){
+    discount = computeDiscount(referralCode, finalPrice);
     finalPrice = Math.max(0, finalPrice - discount);
   }
   const discountLine = discount ? `\nتم تطبيق خصم كود الدعوة (${discount} جنيه) — السعر النهائي: ${finalPrice} جنيه.` : '';
@@ -707,7 +721,7 @@ document.getElementById('trackBtn').addEventListener('click', async ()=>{
         <div class="invite-row">
           <div>
             <div class="i-phone">${en.phone}</div>
-            <div class="i-time">${en.time} · ${en.type}</div>
+            <div class="i-time">${formatInviteTime(en.time)} · ${en.type}</div>
           </div>
           <span class="i-status ${en.completed ? 'done' : 'pending'}">${en.completed ? 'مكتملة' : 'لسه'}</span>
         </div>
