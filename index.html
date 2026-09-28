@@ -427,8 +427,8 @@ const ICON_PHONE = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.6 1
 const ICON_CART = '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>';
 const ICON_EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
 
-// كل الباقات مرتبة من الأصغر للأكبر - عدّل السعر/الاستوك من هنا بسهولة
-const packages = [
+// كل الباقات مرتبة من الأصغر للأكبر - دي نسخة احتياطية تظهر فوراً، وبعدين بتتحدث تلقائياً من شيت الباقات
+let packages = [
   {gb:5,   min:500,  price:100, old:null},
   {gb:10,  min:750,  price:160, old:200},
   {gb:15,  min:1000, price:200, old:240},
@@ -496,8 +496,27 @@ document.getElementById('reviews-grid').innerHTML = reviews.map(r=>`
   </div>
 `).join('');
 
-document.getElementById('grid-packages').innerHTML = packages
-  .slice().sort((a,b)=>a.gb-b.gb).map(renderCard).join('');
+function renderPackagesGrid(){
+  document.getElementById('grid-packages').innerHTML = packages
+    .slice().sort((a,b)=>a.gb-b.gb).map(renderCard).join('');
+}
+renderPackagesGrid();
+
+const PACKAGES_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzMRIlAG5hE71KOkK68xLRYIiQlEzAW4EqKNkrozIgu6praA1gcJ2HnxebloeBu4AtUGw/exec";
+async function loadPackagesFromSheet(){
+  if(!PACKAGES_WEBHOOK_URL) return;
+  try{
+    const res = await fetch(PACKAGES_WEBHOOK_URL);
+    const data = await res.json();
+    if(data && data.status === 'ok' && Array.isArray(data.packages) && data.packages.length){
+      packages = data.packages;
+      renderPackagesGrid();
+      if(typeof populateReservationForm === 'function') populateReservationForm();
+    }
+  }catch(err){ /* لو فشل التحميل، الباقات الاحتياطية المكتوبة في الكود بتفضل شغالة عادي */ }
+}
+loadPackagesFromSheet();
+setInterval(loadPackagesFromSheet, 5*60*1000); // تحديث كل 5 دقايق
 
 function showView(name){
   VIEWS.forEach(v=>{
