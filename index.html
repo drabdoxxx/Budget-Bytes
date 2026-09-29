@@ -90,6 +90,13 @@ section{padding:40px 0}
 .order-btn{display:flex;align-items:center;justify-content:center;gap:6px;width:100%;background:var(--purple-700);color:#fff;border:none;padding:9px;border-radius:10px;font-weight:700;font-size:13.5px;cursor:pointer;transition:background .15s}
 .order-btn svg{width:15px;height:15px}
 .order-btn:hover{background:var(--purple-900)}
+.skeleton-card{display:flex;flex-direction:column;align-items:center;gap:8px}
+.skel{background:linear-gradient(90deg,var(--line) 25%,#f0e9fa 50%,var(--line) 75%);background-size:200% 100%;animation:skel-pulse 1.4s ease-in-out infinite;border-radius:8px}
+.skel-icon{width:22px;height:22px;border-radius:50%}
+.skel-num{width:50px;height:26px;margin-top:4px}
+.skel-line{width:80%;height:12px}
+.skel-btn{width:100%;height:32px;margin-top:8px;border-radius:10px}
+@keyframes skel-pulse{0%{background-position:200% 0}100%{background-position:-200% 0}}
 .viewers{display:flex;align-items:center;justify-content:center;gap:4px;font-size:11px;color:var(--muted);margin:2px 0 8px}
 .viewers svg{width:12px;height:12px;opacity:.7}
 
@@ -496,24 +503,35 @@ document.getElementById('reviews-grid').innerHTML = reviews.map(r=>`
   </div>
 `).join('');
 
+function renderSkeletonGrid(){
+  document.getElementById('grid-packages').innerHTML = Array.from({length:6}).map(()=>`
+    <div class="card skeleton-card">
+      <div class="skel skel-icon"></div>
+      <div class="skel skel-num"></div>
+      <div class="skel skel-line"></div>
+      <div class="skel skel-line" style="width:60%"></div>
+      <div class="skel skel-btn"></div>
+    </div>`).join('');
+}
 function renderPackagesGrid(){
   document.getElementById('grid-packages').innerHTML = packages
     .slice().sort((a,b)=>a.gb-b.gb).map(renderCard).join('');
 }
-renderPackagesGrid();
+renderSkeletonGrid();
 
 const PACKAGES_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbzMRIlAG5hE71KOkK68xLRYIiQlEzAW4EqKNkrozIgu6praA1gcJ2HnxebloeBu4AtUGw/exec";
-async function loadPackagesFromSheet(){
-  if(!PACKAGES_WEBHOOK_URL) return;
+async function loadPackagesFromSheet(showSkeletonOnFail){
+  if(!PACKAGES_WEBHOOK_URL){ renderPackagesGrid(); return; }
   try{
-    const res = await fetch(PACKAGES_WEBHOOK_URL);
+    const timeout = new Promise((_, reject)=> setTimeout(()=>reject(new Error('timeout')), 4000));
+    const res = await Promise.race([fetch(PACKAGES_WEBHOOK_URL), timeout]);
     const data = await res.json();
     if(data && data.status === 'ok' && Array.isArray(data.packages) && data.packages.length){
       packages = data.packages;
-      renderPackagesGrid();
-      if(typeof populateReservationForm === 'function') populateReservationForm();
     }
-  }catch(err){ /* لو فشل التحميل، الباقات الاحتياطية المكتوبة في الكود بتفضل شغالة عادي */ }
+  }catch(err){ /* السعر الحقيقي متأخر أو الشيت مش راد - هنكمل بالاحتياطي المكتوب في الكود */ }
+  renderPackagesGrid();
+  if(typeof populateReservationForm === 'function') populateReservationForm();
 }
 loadPackagesFromSheet();
 setInterval(loadPackagesFromSheet, 5*60*1000); // تحديث كل 5 دقايق
