@@ -683,13 +683,14 @@ document.getElementById('revSubmitBtn').addEventListener('click', async ()=>{
 
   const originalText = btn.textContent;
   btn.textContent = 'جارٍ الإرسال...';
-  await fetch(PACKAGES_WEBHOOK_URL, {
-    method:'POST',
-    headers:{'Content-Type':'text/plain;charset=utf-8'},
-    body: JSON.stringify({action:'submitReview', name, rating: selectedStarRating, text})
-  }).catch(()=>{});
-  btn.textContent = originalText;
+  fireAndForget({action:'submitReview', name, rating: selectedStarRating, text});
 
+  // يظهر فوراً على الصفحة من غير ما ننتظر رد السيرفر أو مراجعة
+  reviews.unshift({name, rating: selectedStarRating, text: text || 'تجربة إيجابية مع الخدمة 👍'});
+  renderReviewsGrid();
+
+  btn.textContent = originalText;
+  successEl.textContent = 'تم نشر تقييمك، شكراً ليك! 🎉';
   successEl.style.display = 'block';
   document.getElementById('revName').value = '';
   document.getElementById('revText').value = '';
