@@ -271,7 +271,11 @@ footer b{color:#fff;display:block;font-size:16px;margin-bottom:6px}
 .pd-empty{text-align:center;color:var(--muted);padding:26px 10px;background:var(--card);border:1px dashed var(--line);border-radius:14px}
 .pd-win-title{font-size:15px;font-weight:900;margin:14px 0 8px;color:var(--stock)}
 .pd-demo{background:#fff3cd;color:#7a5b00;border-radius:10px;padding:8px 12px;font-size:12.5px;margin-bottom:12px;text-align:center}
-.pd-promo{display:flex;align-items:center;gap:12px;width:100%;margin:18px 0 0;padding:14px 16px;border:none;border-radius:18px;cursor:pointer;color:#fff;text-align:right;font-family:inherit;background:linear-gradient(120deg,#241246,#7b3fd6 60%,#e0398f)}
+.pd-promo-wrap{margin-top:-46px;position:relative;z-index:3}
+.pd-promo-wrap+.qa-wrap{margin-top:14px}
+.pd-new{position:absolute;top:-9px;right:16px;background:var(--gold);color:var(--gold-ink);font-size:11.5px;font-weight:900;padding:2px 10px;border-radius:99px;animation:pdPulse2 1.6s infinite}
+@keyframes pdPulse2{50%{transform:scale(1.08)}}
+.pd-promo{position:relative;box-shadow:0 10px 26px #24124655;border:2px solid #ffffff55!important;margin:0!important;display:flex;align-items:center;gap:12px;width:100%;margin:18px 0 0;padding:14px 16px;border:none;border-radius:18px;cursor:pointer;color:#fff;text-align:right;font-family:inherit;background:linear-gradient(120deg,#241246,#7b3fd6 60%,#e0398f)}
 .pd-promo .ic{font-size:30px}
 .pd-promo b{display:block;font-size:16px}
 .pd-promo span{font-size:12.5px;opacity:.9}
@@ -327,7 +331,7 @@ footer b{color:#fff;display:block;font-size:16px;margin-bottom:6px}
     </div>
   </div>
 
-  <div class="wrap"><button class="pd-promo" data-nav="predict"><span class="ic">⚽</span><span><b>توقّع نتيجة المباراة واكسب خصم لحد 200 جنيه</b><span>سجّل توقعك قبل نهاية الشوط الأول</span></span></button></div>
+  <div class="wrap pd-promo-wrap"><button class="pd-promo" data-nav="predict"><span class="pd-new">جديد</span><span class="ic">⚽</span><span><b>توقّع نتيجة المباراة واكسب خصم لحد 200 جنيه</b><span>سجّل توقعك قبل نهاية الشوط الأول</span></span></button></div>
 
   <div class="wrap qa-wrap">
     <div class="qa-grid">
@@ -1284,7 +1288,7 @@ async function pdLoad(){
         PD.state.result = j.result||null;
         if(j.serverNow) PD.state.offset = j.serverNow - Date.now();
         if(j.config){ const c=j.config;
-          if(c.home) PD.home={name:c.home,logo:c.homeLogo||''}; if(c.away) PD.away={name:c.away,logo:c.awayLogo||''};
+          if(c.home){ PD.home.name=c.home; if(c.homeLogo) PD.home.logo=c.homeLogo; } if(c.away){ PD.away.name=c.away; if(c.awayLogo) PD.away.logo=c.awayLogo; }
           if(c.competition) PD.competition=c.competition; if(c.kickoff) PD.kickoff=c.kickoff; if(c.deadline) PD.deadline=c.deadline;
         }
         pdRenderStatic();
