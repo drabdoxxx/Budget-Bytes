@@ -310,6 +310,8 @@ footer b{color:#fff;display:block;font-size:16px;margin-bottom:6px}
 .gm-card b{display:block;font-size:15px;margin:6px 0 2px}
 .gm-card small{display:block;color:var(--muted);font-size:12px;min-height:34px}
 .gm-card .rw{display:inline-block;margin-top:8px;background:var(--stock-bg);color:var(--stock);font-weight:900;font-size:12px;padding:3px 10px;border-radius:99px}
+.gm-card[data-game=tower]{grid-column:1/-1;order:-1;background:linear-gradient(135deg,#e6f5ff,#fff);border-color:#9fd3f3}
+.gm-card[data-game=tower] .rw{background:#dff1ff;color:#0b6aa8}
 .gm-status{margin:10px 0 0;font-size:13px;text-align:center;font-weight:700}
 .gm-status.ok{color:var(--stock)} .gm-status.bad{color:#c62828}
 .gm-mycode{background:linear-gradient(135deg,#fff7e0,#ffe9a8);border:1px solid #f0b42980;border-radius:16px;padding:12px;text-align:center;margin-bottom:6px;color:var(--gold-ink)}
@@ -1082,19 +1084,20 @@ async function sendOrder(e){
   errorEl.style.display = 'none';
   const referralCode = document.getElementById('orderReferral').value.trim().toUpperCase();
 
-  let discount = 0, finalPrice = selected.price, isGame = false;
-  if(/^GM-/.test(referralCode)){
+  let discount = 0, finalPrice = selected.price, isGame = false, bonusMb = 0;
+  if(/^(GM|MB)-/.test(referralCode)){
     window._sending = true;
     const g = await gmRedeem(referralCode, phone);
     window._sending = false;
     if(!g.ok){ errorEl.textContent = g.message; errorEl.style.display = 'block'; return; }
-    discount = Math.min(g.amount, selected.price); isGame = true;
-    finalPrice = Math.max(0, selected.price - discount);
+    if(g.type==='MB'){ bonusMb = g.amount; isGame = true; }
+    else { discount = Math.min(g.amount, selected.price); isGame = true;
+    finalPrice = Math.max(0, selected.price - discount); }
   } else if(referralCode){
     discount = computeDiscount(referralCode, selected.price);
     finalPrice = Math.max(0, selected.price - discount);
   }
-  const discountLine = discount ? `\nتم تطبيق خصم ${isGame ? 'كود اللعبة ('+referralCode+')' : 'كود الدعوة'} (${discount} جنيه) — السعر النهائي: ${finalPrice} جنيه.` : '';
+  const discountLine = (bonusMb ? `\nهدية كود الميجات (${referralCode}): ${bonusMb} ميجا إضافية على الباقة.` : '') + (discount ? `\nتم تطبيق خصم ${isGame ? 'كود اللعبة ('+referralCode+')' : 'كود الدعوة'} (${discount} جنيه) — السعر النهائي: ${finalPrice} جنيه.` : '');
   const details = selected.isHome
     ? `باقة الإنترنت الهوائي ${selected.gb} جيجا`
     : `باقة الـ ${selected.gb} جيجابايت و${selected.min} دقيقة${selected.sms ? ` و${selected.sms} رسالة` : ''}`;
@@ -1179,20 +1182,21 @@ document.getElementById('resSubmit').addEventListener('click', async (e)=>{
   const dateLabel = formatArabicDate(new Date(dateVal));
   const packageLabel = `${gb} جيجا / ${min} دقيقة`;
 
-  let discount = 0, finalPrice = Number(price), isGame = false;
-  if(/^GM-/.test(referralCode)){
+  let discount = 0, finalPrice = Number(price), isGame = false, bonusMb = 0;
+  if(/^(GM|MB)-/.test(referralCode)){
     if(window._sending) return;
     window._sending = true;
     const g = await gmRedeem(referralCode, phone);
     window._sending = false;
     if(!g.ok){ errorEl.textContent = g.message; errorEl.style.display = 'block'; return; }
-    discount = Math.min(g.amount, finalPrice); isGame = true;
-    finalPrice = Math.max(0, finalPrice - discount);
+    if(g.type==='MB'){ bonusMb = g.amount; isGame = true; }
+    else { discount = Math.min(g.amount, finalPrice); isGame = true;
+    finalPrice = Math.max(0, finalPrice - discount); }
   } else if(referralCode){
     discount = computeDiscount(referralCode, finalPrice);
     finalPrice = Math.max(0, finalPrice - discount);
   }
-  const discountLine = discount ? `\nتم تطبيق خصم ${isGame ? 'كود اللعبة ('+referralCode+')' : 'كود الدعوة'} (${discount} جنيه) — السعر النهائي: ${finalPrice} جنيه.` : '';
+  const discountLine = (bonusMb ? `\nهدية كود الميجات (${referralCode}): ${bonusMb} ميجا إضافية على الباقة.` : '') + (discount ? `\nتم تطبيق خصم ${isGame ? 'كود اللعبة ('+referralCode+')' : 'كود الدعوة'} (${discount} جنيه) — السعر النهائي: ${finalPrice} جنيه.` : '');
   const msg = `السلام عليكم. أرغب في حجز مسبق لباقة ${packageLabel} بسعر ${price} جنيه، لتفعيلها يوم ${dateLabel}، على الرقم: ${phone}.${discountLine}
 برجاء تأكيد الحجز. شكراً.`;
   fireAndForget({action:'reservation', phone, packageLabel, activationDate: dateLabel, price, referralCode});
@@ -1549,6 +1553,7 @@ document.addEventListener('click',e=>{ const b=e.target.closest('.pd-ac'); if(b)
 })();
 
 /* ================= الألعاب ================= */
+const GM_MB_CAP = 5000;   // أقصى ميجات تتكسب في المحاولة الواحدة (لازم يساوي MAX_MB في كود الألعاب)
 const GMS = {
   runner:{icon:'🏃',name:'سباق البايتس',desc:'انط فوق No Signal و Loading واجمع الميجا بايتس',top:'لحد 20 جنيه',
     rules:'اضغط على الشاشة (أو مسطرة / سهم لفوق) عشان تنط من فوق علامات "No Signal" و"Loading" وتجمع الميجا بايتس. السكور = المسافة بالمتر + (عدد البايتس × 10). كل ما السكور يكبر الخصم يعلى.',
@@ -1559,6 +1564,9 @@ const GMS = {
   tapper:{icon:'⚡',name:'اختبار السرعة',desc:'املا عداد التحميل في 10 ثواني',top:'15 جنيه',
     rules:'اضغط على الزرار الكبير أسرع ما تقدر. العداد بيبدأ أول ما تدوس أول ضغطة وعندك 10 ثواني تملا عداد التحميل (60 ضغطة).',
     rewards:[['60 ضغطة في 10 ثواني','15 جنيه']], hint:'اضغط أسرع ما تقدر!'},
+  tower:{icon:'🧊',name:'برج الثلج',desc:'اقفز من دور لدور لأعلى — كل ليفل بـ 200 ميجا',top:'200 ميجا لكل ليفل',
+    rules:'اطلع برج الثلج بالقفز من دور للي فوقه. استخدم ◀ ▶ للحركة و⬆ للقفز (كل ما تجري أسرع بتقفز أعلى، والحيطة بترجّعك). الشاشة بتطلع لفوق وبتسرّع كل ما تعلى، ولو وقعت تحت الشاشة اللعبة بتخلص. كل ليفل توصله = 200 ميجا، ومفيش نهاية!',
+    rewards:[['كل ليفل تعدّيه','200 ميجا'],['الحد الأقصى ('+GM_MB_CAP+' ميجا)',(GM_MB_CAP/200)+' ليفل']], hint:'◀ ▶ للحركة — ⬆ للقفز (قفز أعلى لما تجري أسرع)'},
   memory:{icon:'🃏',name:'تطابق الكروت',desc:'لاقي كل الأزواج المتطابقة في أقل من 30 ثانية',top:'لحد 20 جنيه',
     rules:'اقلب كارتين في كل مرة وطابق الأشكال (واي فاي، شريحة، سرعة...). العداد بيبدأ من أول كارت تقلبه.',
     rewards:[['خلصتها في أقل من 30 ثانية','15 جنيه'],['خلصتها في أقل من 20 ثانية','20 جنيه']], hint:'لاقي كل الأزواج'}
@@ -1578,7 +1586,7 @@ async function gmPost(payload){
 // استخدام كود لعبة وقت الطلب (بيتأكد إنه مربوط بنفس الرقم وبيقفله)
 async function gmRedeem(code, phone){
   const r = await gmPost({action:'gameRedeem', code, phone});
-  return r && r.status==='ok' ? {ok:true, amount:r.amount} : {ok:false, message:(r&&r.message)||'الكود غير صحيح'};
+  return r && r.status==='ok' ? {ok:true, amount:r.amount, type:r.type||'EGP'} : {ok:false, message:(r&&r.message)||'الكود غير صحيح'};
 }
 
 function gmRenderCards(){
@@ -1590,7 +1598,7 @@ function gmRenderCards(){
 function gmShowMyCode(){
   let c=null; try{ c=JSON.parse(localStorage.getItem('bb_gm_code')||'null'); }catch(e){}
   gmEl('gmMyCode').innerHTML = (c && c.phone===GM.phone && c.exp>Date.now())
-    ? `<div class="gm-mycode">كودك: <b dir="ltr">${pdEsc(c.code)}</b><br><small>خصم ${+c.amount} جنيه — صالح لحد ${new Intl.DateTimeFormat('ar-EG',{day:'numeric',month:'long'}).format(new Date(c.exp))}</small></div>` : '';
+    ? `<div class="gm-mycode">كودك: <b dir="ltr">${pdEsc(c.code)}</b><br><small>${c.type==='MB'?(+c.amount+' ميجا'):('خصم '+(+c.amount)+' جنيه')} — صالح لحد ${new Intl.DateTimeFormat('ar-EG',{day:'numeric',month:'long'}).format(new Date(c.exp))}</small></div>` : '';
 }
 async function gmCheckPhone(){
   const phone = pdNormPhone(gmEl('gmPhone').value);
@@ -1633,7 +1641,7 @@ async function gmStart(){
   }
   GM.token = r.token; GM.playing = true; GM.finished = false;
   gmEl('gmIntro').style.display='none'; gmEl('gmPlay').style.display='';
-  const area = gmEl('gmArea'); area.innerHTML=''; gmEl('gmHint').textContent = GMS[GM.cur].hint;
+  const area = gmEl('gmArea'); area.innerHTML=''; area.style.cssText=''; gmEl('gmHint').textContent = GMS[GM.cur].hint;
   GM.inst = GAME_MAKERS[GM.cur](area, h=>{gmEl("gmHud").innerHTML=h;}, gmFinish);
 }
 async function gmFinish(result){
@@ -1645,12 +1653,14 @@ async function gmFinish(result){
   GM.canPlay = false; gmRenderCards();
   if(r && r.status==='ok' && r.won){
     const exp = r.expiresAt ? new Date(r.expiresAt).getTime() : Date.now()+14*864e5;
-    try{ localStorage.setItem('bb_gm_code',JSON.stringify({phone:GM.phone,code:r.code,amount:r.amount,exp})); }catch(e){}
+    try{ localStorage.setItem('bb_gm_code',JSON.stringify({phone:GM.phone,code:r.code,amount:r.amount,type:r.type||'EGP',exp})); }catch(e){}
     gmShowMyCode();
-    const wa = 'https://wa.me/'+PD.whatsapp+'?text='+encodeURIComponent(`السلام عليكم، كسبت كود خصم ${r.amount} جنيه من ألعاب الموقع.\nالكود: ${r.code}\nرقمي: ${GM.phone}`);
-    box.innerHTML = `<div style="font-size:46px">🎉</div><h3>مبروك! كسبت خصم ${+r.amount} جنيه</h3>
+    const isMb = r.type==='MB';
+    const prize = isMb ? `${+r.amount} ميجا (${+r.levels||''} ليفل)` : `خصم ${+r.amount} جنيه`;
+    const wa = 'https://wa.me/'+PD.whatsapp+'?text='+encodeURIComponent(`السلام عليكم، كسبت ${isMb?'كود ميجات':'كود خصم'} ${isMb?(+r.amount+' ميجا'):(+r.amount+' جنيه')} من ألعاب الموقع.\nالكود: ${r.code}\nرقمي: ${GM.phone}`);
+    box.innerHTML = `<div style="font-size:46px">🎉</div><h3>مبروك! كسبت ${prize}</h3>
       <div>الكود بتاعك (مربوط برقمك فقط):</div><div class="gm-code" id="gmCodeTxt">${pdEsc(r.code)}</div>
-      <p class="gm-rules">اكتبه في خانة كود الخصم وقت طلب الباقة. صالح 14 يوم ويتستخدم مرة واحدة. صوّر الشاشة أو ابعته لنفسك عشان ما يضيعش!</p>
+      <p class="gm-rules">${isMb?'اكتبه في خانة الكود وقت طلب أي باقة وهتاخد الميجات هدية إضافية، أو ابعته لنا على واتساب.':'اكتبه في خانة كود الخصم وقت طلب الباقة.'} صالح 14 يوم ويتستخدم مرة واحدة. صوّر الشاشة أو ابعته لنفسك عشان ما يضيعش!</p>
       <div class="row"><button class="form-submit-btn sec" id="gmCopy" type="button" style="margin:0">نسخ الكود</button><a class="form-submit" href="${wa}" target="_blank" rel="noopener" style="margin:0">احفظه على واتساب</a></div>
       <button class="form-submit-btn" id="gmToPk" type="button">اطلب باقة دلوقتي</button>`;
     gmEl('gmCopy').onclick=()=>{ try{navigator.clipboard.writeText(r.code).catch(()=>{});}catch(e){} gmEl('gmCopy').textContent='✓ تم النسخ'; };
@@ -1786,7 +1796,89 @@ function gmMemory(area,hud,finish){
   });
   return {destroy(){ done=true; clearInterval(iv); }};
 }
-const GAME_MAKERS = {runner:gmRunner, signal:(a,h,f)=>gmSignal(a,h,f), tapper:gmTapper, memory:gmMemory};
+
+/* ---- لعبة 5: برج الثلج (قفز لأعلى — لا نهائية) ---- */
+function gmTower(area,hud,finish){
+  const W=360,H=520,FH=88,LV=GM_MB_CAP/200,dpr=Math.min(2,window.devicePixelRatio||1),PW=26,PH=30;
+  area.style.flexDirection='column'; area.style.alignItems='center';
+  const cv=document.createElement('canvas'); cv.width=W*dpr; cv.height=H*dpr; cv.style.background='linear-gradient(#bfe3ff,#eaf7ff)'; area.appendChild(cv);
+  const ctl=document.createElement('div'); ctl.style.cssText='display:flex;justify-content:space-between;align-items:center;width:100%;max-width:440px;margin-top:10px;direction:ltr;gap:10px';
+  const bs='height:64px;border:none;border-radius:16px;font-size:26px;font-weight:900;color:#fff;background:#4b1f82;touch-action:none;user-select:none;-webkit-user-select:none;font-family:inherit';
+  ctl.innerHTML=`<div style="display:flex;gap:8px"><button type="button" data-k="l" style="${bs};width:74px">◀</button><button type="button" data-k="r" style="${bs};width:74px">▶</button></div><button type="button" data-k="j" style="${bs};flex:1;max-width:190px;background:#e0398f;font-size:18px">⬆ قفز</button>`;
+  area.appendChild(ctl);
+  const c=cv.getContext('2d'); c.scale(dpr,dpr);
+  // العالم: y سالب لفوق. الدور 0 هو الأرضية.
+  const key={l:0,r:0}; let jumpBuf=0;
+  const plats=[{x:0,w:W,y:0,i:0}];
+  let rng=(()=>{ let t=Math.floor(Math.random()*1e9)||1; return ()=>((t=Math.imul(t^t>>>15,t|1),t^=t+Math.imul(t^t>>>7,t|61),((t^t>>>14)>>>0)/4294967296)); })();
+  function genUp(){ while(plats[plats.length-1].i < level+14){
+    const prev=plats[plats.length-1], i=prev.i+1;
+    const w=Math.max(54,Math.round(110-i*1.6)); const reach=150;
+    const lo=Math.max(0,(prev.i===0?0:prev.x)-reach), hi=Math.min(W-w,(prev.i===0?W:prev.x+prev.w)+reach-w);
+    let x=lo+rng()*Math.max(0,hi-lo); plats.push({x:Math.round(x),w,y:-i*FH,i}); } }
+  const p={x:W/2-PW/2,y:0,vx:0,vy:0,ground:true,coy:0,face:1};
+  let level=0,camTop=-(H-86),t0=null,last=0,raf=0,done=false,over=false,lastMs=0,shake=0;
+  const scrollSpeed=()=>(level<2&&nowMs()<8000)?0:Math.min(200,24+level*4.5);
+  const nowMs=()=>t0===null?0:Math.round(performance.now()-t0);
+  function end(){ if(done) return; done=true; cancelAnimationFrame(raf); finish({levels:level, ms:Math.max(1,lastMs||nowMs())}); }
+  function doJump(){ p.vy=-(690+Math.abs(p.vx)*.42); p.ground=false; p.coy=0; jumpBuf=0; }
+  const setK=(k,v)=>{ if(k==='l') key.l=v; else if(k==='r') key.r=v; else if(k==='j'&&v){ jumpBuf=.14; } };
+  ctl.querySelectorAll('button').forEach(b=>{ const k=b.dataset.k;
+    b.addEventListener('pointerdown',e=>{ e.preventDefault(); try{b.setPointerCapture(e.pointerId);}catch(_){} setK(k,1); });
+    ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>b.addEventListener(ev,()=>setK(k,0))); });
+  cv.addEventListener('pointerdown',e=>{ e.preventDefault(); const r=cv.getBoundingClientRect(); const x=(e.clientX-r.left)/r.width; if(x>.33&&x<.67) jumpBuf=.14; });
+  const kd=e=>{ if(e.code==='ArrowLeft'){key.l=1;e.preventDefault();} else if(e.code==='ArrowRight'){key.r=1;e.preventDefault();} else if(e.code==='Space'||e.code==='ArrowUp'){ jumpBuf=.14; e.preventDefault(); } };
+  const ku=e=>{ if(e.code==='ArrowLeft') key.l=0; if(e.code==='ArrowRight') key.r=0; };
+  document.addEventListener('keydown',kd); document.addEventListener('keyup',ku);
+  function rr(x,y,w,h,r){ c.beginPath(); c.roundRect?c.roundRect(x,y,w,h,r):c.rect(x,y,w,h); c.fill(); }
+  function frame(now){
+    if(done) return;
+    if(t0===null){ t0=now; last=now; }
+    const dt=Math.min(.033,(now-last)/1000); last=now;
+    if(!over){
+      genUp();
+      // حركة أفقية
+      const dir=(key.r?1:0)-(key.l?1:0);
+      if(dir){ p.vx+=dir*1500*dt; p.face=dir; } else p.vx*= (p.ground?Math.pow(.0008,dt):Math.pow(.2,dt));
+      p.vx=Math.max(-280,Math.min(280,p.vx));
+      p.x+=p.vx*dt;
+      if(p.x<0){ p.x=0; p.vx=Math.abs(p.vx)*.85; } if(p.x+PW>W){ p.x=W-PW; p.vx=-Math.abs(p.vx)*.85; }
+      // رأسي
+      jumpBuf=Math.max(0,jumpBuf-dt); p.coy=p.ground?.09:Math.max(0,p.coy-dt);
+      const prevY=p.y; p.vy+=1900*dt; p.y+=p.vy*dt;
+      if(p.vy>=0){ for(const pl of plats){ if(prevY<=pl.y+1&&p.y>=pl.y&&p.x+PW>pl.x+3&&p.x<pl.x+pl.w-3){ p.y=pl.y; p.vy=0; p.ground=true; p.coy=.09; if(pl.i>level){ level=pl.i; shake=.12; lastMs=nowMs(); } break; } } }
+      if(p.ground && p.vy!==0) p.ground=false;
+      if(p.ground){ // ما زال واقف؟
+        const on=plats.some(pl=>Math.abs(p.y-pl.y)<1&&p.x+PW>pl.x+3&&p.x<pl.x+pl.w-3); if(!on) p.ground=false; }
+      if(jumpBuf>0 && p.coy>0){ doJump(); }
+      // الكاميرا
+      const target=p.y-H*.42; if(target<camTop) camTop+=(target-camTop)*Math.min(1,dt*10);
+      camTop-=scrollSpeed()*dt;
+      if(p.y>camTop+H+10){ over=true; lastMs=nowMs(); setTimeout(end,700); }
+      if(level>=LV){ over=true; lastMs=nowMs(); setTimeout(end,500); }
+    }
+    shake=Math.max(0,shake-dt);
+    hud(`<span>ليفل: ${level}</span><span>${level*200} ميجا</span><span>السرعة: ${Math.round(scrollSpeed()/10)}</span>`);
+    // رسم
+    c.clearRect(0,0,W,H); const oy=-camTop;
+    plats.forEach(pl=>{ const y=pl.y+oy; if(y<-20||y>H+20) return;
+      c.fillStyle=`hsl(${196+(pl.i*4)%24},80%,${pl.i===0?86:68}%)`; rr(pl.x,y,pl.w,14,6);
+      c.fillStyle='#fff'; c.globalAlpha=.55; rr(pl.x+3,y+2,Math.max(0,pl.w-6),4,2); c.globalAlpha=1;
+      if(pl.i>0&&pl.i%5===0){ c.fillStyle='#0b6aa8'; c.font='900 11px sans-serif'; c.textAlign='center'; c.fillText(pl.i,pl.x+pl.w/2,y+11); } });
+    // اللاعب
+    const sx=p.x, sy=p.y+oy-PH, sq=p.ground?0:Math.max(-3,Math.min(3,p.vy/200));
+    c.fillStyle='#7b3fd6'; rr(sx,sy-sq,PW,PH+sq,8);
+    c.fillStyle='#fff'; c.fillRect(sx+(p.face>0?14:5),sy+8-sq,6,7); c.fillRect(sx+(p.face>0?5:14),sy+8-sq,6,7);
+    c.fillStyle='#241246'; c.fillRect(sx+(p.face>0?17:6),sy+10-sq,3,4); c.fillRect(sx+(p.face>0?8:15),sy+10-sq,3,4);
+    c.strokeStyle='#7b3fd6'; c.lineWidth=2; c.beginPath(); c.arc(sx+PW/2,sy-sq-2,5,Math.PI*1.1,Math.PI*1.9); c.stroke();
+    if(over&&p.y>camTop+H){ c.fillStyle='#c62828'; c.font='900 24px sans-serif'; c.textAlign='center'; c.fillText('وقعت! 😵',W/2,H/2); }
+    raf=requestAnimationFrame(frame);
+  }
+  raf=requestAnimationFrame(frame);
+  return {destroy(){ done=true; cancelAnimationFrame(raf); document.removeEventListener('keydown',kd); document.removeEventListener('keyup',ku); },
+    _state:()=>({p,plats,level,camTop}), _set:setK};
+}
+const GAME_MAKERS = {tower:gmTower, runner:gmRunner, signal:(a,h,f)=>gmSignal(a,h,f), tapper:gmTapper, memory:gmMemory};
 
 (function gmInit(){
   gmRenderCards();
